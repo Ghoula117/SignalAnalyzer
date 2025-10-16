@@ -17,7 +17,8 @@ source_entries = [
 ]
 
 operation_controls = [
-    {"label": "Fourier Transform", "relx": 0.25, "rely": 0.005, "values": ["DFT Magnitude/Phase", "DFT Filtering"]},
-    {"label": "Cosine Transform" , "relx": 0.425, "rely": 0.005, "values": ["Cosine Magnitude", "Cosine Filtering"]},
-    {"label": "Wavelet Transform", "relx": 0.6, "rely": 0.005, "values": ["Wavelet 1", "Wae"]},
+    {"label": "Operation", "relx": 0.25, "rely": 0.005, "values": ["Fourier Transform", "Cosine Transform", "Wavelet Transform"], "dependents": {"Fourier Transform": ["Fourier"], "Cosine Transform": ["Cosine"], "Wavelet Transform": ["Wavelet"]}},
+    {"label": "Fourier", "relx": 0.25, "rely": 0.25, "values": ["DFT Magnitude/Phase", "DFT Filtering"]},
+    {"label": "Cosine" , "relx":  0.25, "rely": 0.25, "values": ["Cosine Magnitude", "Cosine Filtering"]},
+    {"label": "Wavelet", "relx":  0.25, "rely": 0.25, "values": ["Wavelet 1", "Wae"]},
 ]

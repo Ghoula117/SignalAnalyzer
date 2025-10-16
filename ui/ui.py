@@ -104,10 +104,16 @@ class SettingsFrame(ctk.CTkTabview):
                 variable=var,
                 state="readonly",
                 width=150,
+                command=lambda selected, label=config["label"]: self._on_selection_change(label, selected),
             )
-            combo.place(relx=config["relx"], rely=config["rely"], anchor="n")
             combo.set(placeholder)
-            self.combo_vars[config["label"]] = var
+            self.dynamic_widgets[config["label"]] = combo
+
+            if not self._is_dependent(config["label"]):
+                combo.place(relx=config["relx"], rely=config["rely"], anchor="n")
+                self.combo_vars[config["label"]] = var
+            else:
+                combo.place_forget()
 
     # --- STATISTICS TAB ---
     def _create_tab_statistics(self):
@@ -116,10 +122,9 @@ class SettingsFrame(ctk.CTkTabview):
         entry_cutoff.pack(padx=20, pady=10)
 
     # ------------------- DEPENDENCIAS -------------------
-
     def _is_dependent(self, label):
-        """Verifica si este combobox es dependiente de otro."""
-        for cfg in settings.source_controls:
+        all_controls = settings.source_controls + settings.operation_controls
+        for cfg in all_controls:
             deps = cfg.get("dependents", {})
             if isinstance(deps, dict):
                 for dep_list in deps.values():
@@ -128,17 +133,29 @@ class SettingsFrame(ctk.CTkTabview):
         return False
 
     def _on_selection_change(self, label, selected):
-        print(f"Cambio en {label}: {selected}")
+        print(f"🔁 Cambio en {label}: {selected}")
 
+        # Determinar si el evento viene de SOURCE o OPERATION
+        if label in [cfg["label"] for cfg in settings.source_controls]:
+            configs = settings.source_controls
+        elif label in [cfg["label"] for cfg in settings.operation_controls]:
+            configs = settings.operation_controls
+        else:
+            print(f"⚠️ No se encontró configuración para {label}")
+            return
+
+        # Remover dependientes anteriores de este label
         self._remove_dependents_of(label)
 
-        parent_cfg = next(cfg for cfg in settings.source_controls if cfg["label"] == label)
+        # Buscar configuración del padre
+        parent_cfg = next(cfg for cfg in configs if cfg["label"] == label)
         dependents = parent_cfg.get("dependents", {}).get(selected, [])
 
+        # Mostrar los dependientes asociados
         if dependents:
             self.active_dependents[label] = dependents
             for dep_label in dependents:
-                dep_cfg = next(cfg for cfg in settings.source_controls if cfg["label"] == dep_label)
+                dep_cfg = next(cfg for cfg in configs if cfg["label"] == dep_label)
                 combo = self.dynamic_widgets[dep_label]
                 combo.place(relx=dep_cfg["relx"], rely=dep_cfg["rely"], anchor="n")
                 self.combo_vars[dep_label] = combo.cget("variable")
@@ -152,7 +169,6 @@ class SettingsFrame(ctk.CTkTabview):
             self.combo_vars.pop(dep_label, None)
 
     # ------------------- RECOLECCIÓN -------------------
-
     def collect_all_values(self):
         data = {}
         for label, var in self.combo_vars.items():
