@@ -1,7 +1,8 @@
 import customtkinter as ctk
+from core import math
+from core.generation import signal_selector
 from ui.plotter import PlotFrame
 from core import settings
-
 
 class AppUI(ctk.CTk):
     def __init__(self):
@@ -14,18 +15,35 @@ class AppUI(ctk.CTk):
         self.grid_rowconfigure(1, weight=3)
         self.grid_columnconfigure((0, 1), weight=1)
 
-        settings_frame = SettingsFrame(self)
-        settings_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        # --- Frame de configuración (arriba) ---
+        self.settings_frame = SettingsFrame(self)
+        self.settings_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
 
-        plot1 = PlotFrame(self, title="Gráfica 1")
-        plot1.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        # --- Plots (abajo) ---
+        self.plot1 = PlotFrame(self, title=settings.channelOptions[0])
+        self.plot1.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
 
-        plot2 = PlotFrame(self, title="Gráfica 2")
-        plot2.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
+        self.plot2 = PlotFrame(self, title=settings.channelOptions[1])
+        self.plot2.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
+
+        # --- Variables de señales ---
+        self.y1 = None
+        self.n1 = None  
+        self.fs1 = None
+        self.y2 = None
+        self.n2 = None
+        self.fs2 = None
+        self.y3 = None
+        self.n3 = None
+        self.fs3 = None
+
+        # Referencia circular: para que SettingsFrame acceda a AppUI
+        self.settings_frame.main_app = self
 
 class SettingsFrame(ctk.CTkTabview):
     def __init__(self, parent):
         super().__init__(parent, width=400, height=150)
+        self.main_app = None
         self.grid(row=0, column=0, sticky="nsew")
 
         # Crear tabs
@@ -75,10 +93,10 @@ class SettingsFrame(ctk.CTkTabview):
             entry.place(relx=config["relx"], rely=config["rely"], anchor="n")
             self.entry_vars[config["name"]] = entry
 
-        ctk.CTkButton(
-            tab, text="Aplicar Configuración", command=self.collect_all_values
-        ).place(relx=0.75, rely=0.85, anchor="center")
+        self.btn_synthetic = ctk.CTkButton(tab, text="Generate", command=self._generate_signal)
+        ctk.CTkButton(tab, text="Set Signal", command=self._generate_signal).place(relx=0.775, rely=0.25, anchor="n")
 
+        ctk.CTkButton(tab, text="Get Output", command=self._output_channel).place(relx=0.775, rely=0.495, anchor="n")
 
     # --- OPERATION TAB ---
     def _create_tab_operation(self):
@@ -115,13 +133,28 @@ class SettingsFrame(ctk.CTkTabview):
             else:
                 combo.place_forget()
 
+        operation_var = ctk.StringVar(value="Operation")
+        operation_combo = ctk.CTkComboBox(
+            tab,
+            values=settings.basicOperation,
+            variable=operation_var,
+            state="readonly",
+            width=150,
+            command=lambda selected, label=config["label"]: self._on_selection_change(label, selected)
+        )
+        operation_combo.set("Operation")
+        operation_combo.place(relx=0.75, rely=0.35, anchor="center")
+        self.dynamic_widgets["Operation"] = operation_combo
+        self.combo_vars["Operation"] = operation_var
+        
+        ctk.CTkButton(tab, text="Operate", command=self._operate_signals).place(relx=0.425, rely=0.005, anchor="n")
+
     # --- STATISTICS TAB ---
     def _create_tab_statistics(self):
         tab = self.tab("Statistics")
         entry_cutoff = ctk.CTkEntry(tab, placeholder_text="Frecuencia de corte (Hz)")
         entry_cutoff.pack(padx=20, pady=10)
 
-    # ------------------- DEPENDENCIAS -------------------
     def _is_dependent(self, label):
         all_controls = settings.source_controls + settings.operation_controls
         for cfg in all_controls:
@@ -133,21 +166,15 @@ class SettingsFrame(ctk.CTkTabview):
         return False
 
     def _on_selection_change(self, label, selected):
-        print(f"🔁 Cambio en {label}: {selected}")
-
         # Determinar si el evento viene de SOURCE o OPERATION
         if label in [cfg["label"] for cfg in settings.source_controls]:
             configs = settings.source_controls
         elif label in [cfg["label"] for cfg in settings.operation_controls]:
             configs = settings.operation_controls
-        else:
-            print(f"⚠️ No se encontró configuración para {label}")
-            return
 
         # Remover dependientes anteriores de este label
         self._remove_dependents_of(label)
 
-        # Buscar configuración del padre
         parent_cfg = next(cfg for cfg in configs if cfg["label"] == label)
         dependents = parent_cfg.get("dependents", {}).get(selected, [])
 
@@ -159,6 +186,11 @@ class SettingsFrame(ctk.CTkTabview):
                 combo = self.dynamic_widgets[dep_label]
                 combo.place(relx=dep_cfg["relx"], rely=dep_cfg["rely"], anchor="n")
                 self.combo_vars[dep_label] = combo.cget("variable")
+        
+        if self.combo_vars.get("Source") and self.combo_vars.get("Source").get() == settings.sourceOptions[0]:
+            self.btn_synthetic.place(relx=0.775, rely=0.25, anchor="center")
+        else:
+            self.btn_synthetic.place_forget()
 
     def _remove_dependents_of(self, label):
         deps = self.active_dependents.pop(label, [])
@@ -168,18 +200,70 @@ class SettingsFrame(ctk.CTkTabview):
                 combo.place_forget()
             self.combo_vars.pop(dep_label, None)
 
-    # ------------------- RECOLECCIÓN -------------------
-    def collect_all_values(self):
+    def _generate_signal(self):
         data = {}
-        for label, var in self.combo_vars.items():
-            if isinstance(var, str):
-                data[label] = self.nametowidget(var).get()
-            else:
-                data[label] = var.get()
 
+        for label, combo in self.dynamic_widgets.items():
+            try:
+                data[label] = combo.get()
+            except Exception:
+                data[label] = None
+
+
+        # Recolectar valores de entradas
         for name, entry in self.entry_vars.items():
             data[name] = entry.get()
 
-        print("\n Datos recopilados:")
+        print("\n📊 Datos recopilados:")
         for k, v in data.items():
             print(f"  {k}: {v}")
+
+        n, y = signal_selector(
+            name=data.get("Signal"),
+            fa=float(data.get("Fa")),
+            fs=int(data.get("Fs")),
+            gain=float(data.get("Gain")),
+            n0=int(data.get("Start")),
+            duration=int(data.get("Duration")),
+            shift=int(data.get("Shift")),
+        )
+
+        app = self.main_app
+        output = data.get("Channel")
+        if output == settings.channelOptions[0]:
+            app.y1 = y
+            app.n1 = n
+            app.fs1 = int(data.get("Fs"))
+            app.plot1.update_plot(n, y)
+        elif output == settings.channelOptions[1]:
+            app.y2 = y
+            app.n2 = n
+            app.fs2 = int(data.get("Fs"))
+            app.plot2.update_plot(n, y)
+
+        return data
+    
+    def _operate_signals(self):
+        app = self.main_app
+        app.n3, app.y3, app.fs3 = math.basic_operations(self.dynamic_widgets.get("Operation").get(), app.y1, app.fs1, app.n1, app.y2, app.fs2, app.n2)
+
+    def _output_channel(self):
+        app = self.main_app
+        data = {}
+
+        target_channel = data.get("Channel")
+        if target_channel == settings.channelOptions[0]:
+            source_signal = app.y1
+        elif target_channel == settings.channelOptions[1]:
+            source_signal = app.y2
+        if source_signal is None:
+            return
+        
+        n = list(range(len(source_signal)))  # eje temporal genérico
+
+        if target_channel.lower() ==  settings.channelOptions[0]:
+            app.y1 = source_signal
+            app.plot1.update_plot(n, source_signal)
+        elif target_channel.lower() == settings.channelOptions[1]:
+            app.y2 = source_signal
+            app.plot2.update_plot(n, source_signal)
