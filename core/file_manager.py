@@ -3,8 +3,8 @@ import numpy as np
 from tkinter import filedialog, messagebox
 from core import settings
 
-def load_signal(n0): 
-    file_path = filedialog.askopenfilename(filetypes=settings.file_in_types)
+def load_signal(n0=0): 
+    file_path = filedialog.askopenfilename(filetypes=settings.fileTypes)
     if not file_path:
         messagebox.showwarning("Warning", "No file selected")
         return None
@@ -18,10 +18,12 @@ def load_signal(n0):
     nf = n0 + len(h) - 1
     n = np.linspace(n0, nf, len(h))
 
+    print(h)
+
     return n, h, fs
 
 def load_coeficients(): 
-    file_path = filedialog.askopenfilename(filetypes=settings.file_in_types)
+    file_path = filedialog.askopenfilename(filetypes=settings.fileTypes)
     if not file_path:
         messagebox.showwarning("Warning", "No file selected")
         return None

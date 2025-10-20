@@ -7,6 +7,20 @@ from scipy.stats import skew, kurtosis, mode, entropy
 from tkinter import simpledialog, messagebox
 from core import settings
 
+def amplitud_selector(name: str, signal: list[float] | np.ndarray)-> np.ndarray:
+    options = {
+        settings.amplitudeOperations[0]: amplitud_scaling,
+        settings.amplitudeOperations[1]: amplitud_log,
+        settings.amplitudeOperations[2]: amplitud_exponential,
+        settings.amplitudeOperations[3]: amplitud_inversion,
+        settings.amplitudeOperations[4]: amplitud_power,
+        settings.amplitudeOperations[5]: amplitud_none
+    }
+
+    y = options[name](signal)
+    y = verification(y)
+    return y
+
 def amplitud_scaling(signal): 
     gain = simpledialog.askfloat  ("Constant Value:", "Value:", initialvalue=1.0)
     return gain * np.array(signal)
@@ -28,19 +42,37 @@ def amplitud_power(signal):
 def amplitud_none(signal):
     return np.array(signal)
 
-def amplitud_selector(name: str, signal: list[float] | np.ndarray)-> np.ndarray:
-    options = {
-        settings.opera_amp[0]: amplitud_scaling,
-        settings.opera_amp[1]: amplitud_log,
-        settings.opera_amp[2]: amplitud_exponential,
-        settings.opera_amp[3]: amplitud_inversion,
-        settings.opera_amp[4]: amplitud_power,
-        settings.opera_amp[5]: amplitud_none
+def preprocessing_operations(action: str, y: list[float] | np.ndarray):
+    actions = {
+        settings.normalizationMethods[0]: min_max_normalization,
+        settings.normalizationMethods[1]: signed,
+        settings.normalizationMethods[2]: standard_normalization,
+        settings.normalizationMethods[3]: normalization_none
     }
-
-    y = options[name](signal)
-    y = verification(y)
+    y = actions[action](y)
     return y
+
+def min_max_normalization(y):
+    return (y - np.min(y)) / (np.max(y) - np.min(y))
+
+def signed(y):
+    return y / np.max(np.abs(y))
+
+def standard_normalization(y):
+    return (y - np.mean(y)) / np.std(y)
+
+def normalization_none(signal):
+    return signal
+
+def time_sampling(name: str, signal: list[float] | np.ndarray, fs:int, n0:int, duration:float, type:str)-> tuple[np.ndarray, np.ndarray]:
+    options = {
+        settings.resampleMethods[0]: downsampling,
+        settings.resampleMethods[1]: upsampling,
+        settings.resampleMethods[2]: sampling_none
+    }
+    n, y = options[name](signal, n0, fs, type, duration)
+
+    return n, y
 
 def downsampling(signal, n0, fs, type, duration):
     k = abs(simpledialog.askinteger("Downsampling for integer k", "Value:",minvalue = 0, initialvalue=2))
@@ -75,23 +107,15 @@ def sampling_none(signal, n0, fs, type, duration):
     n = axis_time(len(signal), fs, n0, type, duration)
     return n, np.asarray(signal)
 
-def time_sampling(name: str, signal: list[float] | np.ndarray, fs:int, n0:int, duration:float, type:str)-> tuple[np.ndarray, np.ndarray]:
-    options = {
-        settings.sampling_method[0]: downsampling,
-        settings.sampling_method[1]: upsampling,
-        settings.sampling_method[2]: sampling_none
-    }
-    n, y = options[name](signal, n0, fs, type, duration)
-
-    return n, y
-
 def axis_time(n_samples: int, fs: int, n0: float, type: str, duration: float) -> np.ndarray:   
-    if type == settings.signal_types[1]: #signal
+    if type == settings.signalTypes[1]: #signal
         n = n0 + np.arange(n_samples) / fs
-    elif type == settings.signal_types[0]: #audio
+    elif type == settings.signalTypes[0]: #audio
         n0_samples = int(n0 * fs)
         n = np.arange(n0_samples, n0_samples + n_samples)
         n = n / fs 
+    else:  # default
+        n = np.arange(n_samples) / fs
     return n
 
 def resample_and_align(y1, fs1, y2, fs2):

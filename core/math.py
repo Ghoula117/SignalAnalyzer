@@ -8,21 +8,9 @@ from ui.plotter import ProcessedSignalPlot
 from core.signal_utils import resample_signal, signals_padding
 from core.file_manager import load_coeficients, load_signal
 from scipy.fftpack import dct, idct
-#import pywt
+import pywt
 
 processed_plot = ProcessedSignalPlot()
-
-def basic_operations(action: str, y1: list[float] | np.ndarray, fs1:int, n01:float, y2: list[float] | np.ndarray, fs2:int, n02:float)-> np.ndarray: 
-    actions = {
-        settings.basicOperation[0]: addition,
-        settings.basicOperation[1]: subtraction,
-        settings.basicOperation[2]: multiply,
-        settings.basicOperation[3]: division,
-        settings.basicOperation[4]: power,
-    }
-    n, result, freq = actions[action](y1, fs1, n01, y2, fs2, n02)
-
-    return n, result, freq
 
 def addition(y1, fs1, n01, y2, fs2, n02):
     y1_resampled, y2_resampled, freq = resample_signal(y1, fs1, y2, fs2)
@@ -64,33 +52,17 @@ def power(y1, fs1, n01, y2, fs2, n02):
     generate_result(n, result)
     return n, result, freq
 
-def preprocessing_operations(action: str, y: list[float] | np.ndarray):
+def basic_operations(action: str, y1: list[float] | np.ndarray, fs1:int, n01:float, y2: list[float] | np.ndarray, fs2:int, n02:float)-> np.ndarray: 
     actions = {
-        settings.preprocessing_operation[0]: min_max_normalization,
-        settings.preprocessing_operation[1]: signed,
-        settings.preprocessing_operation[2]: standard_normalization
+        settings.basicOperation[0]: addition,
+        settings.basicOperation[1]: subtraction,
+        settings.basicOperation[2]: multiply,
+        settings.basicOperation[3]: division,
+        settings.basicOperation[4]: power,
     }
-    y = actions[action](y)
-    return y
+    n, result, freq = actions[action](y1, fs1, n01, y2, fs2, n02)
 
-def min_max_normalization(y):
-    return (y - np.min(y)) / (np.max(y) - np.min(y))
-
-def signed(y):
-    return y / np.max(np.abs(y))
-
-def standard_normalization(y):
-    return (y - np.mean(y)) / np.std(y)
-
-def filtering_operation(action: str, **kwargs):
-    actions = {
-        settings.filter_type[0]: fir_filter,
-        settings.filter_type[1]: iir_filter,
-    }
-    n, result, fs = actions[action](**kwargs)
-    generate_result(n, result)
-
-    return n, result, fs
+    return n, result, freq
 
 def fir_filter(x, nx0, fs1, h, nh0, fs2):
     indx = simpledialog.askinteger("Convolution method", "\n1 Load parameters\n2 Set parameters", minvalue=1, maxvalue=2, initialvalue=1)
@@ -116,7 +88,7 @@ def fir_filter(x, nx0, fs1, h, nh0, fs2):
             else:
                 break
         
-    x_resampled, h_fix, freq = resample_signal(x, fs1, h, fs2)       
+    x_resampled, h_fix, freq = resample_signal(x, fs1, h_fix, fs2)       
 
     Lx = len(x_resampled)
     Lh = len(h_fix)
@@ -197,6 +169,16 @@ def iir_filter(x, nx0, fs1, **kwargs):
 
     return n, y_total, fs1
 
+def filtering_operation(action: str, **kwargs):
+    actions = {
+        settings.filterType[0]: fir_filter,
+        settings.filterType[1]: iir_filter,
+    }
+    n, result, fs = actions[action](**kwargs)
+    generate_result(n, result)
+
+    return n, result, fs
+
 def convolution(x, nx0, h, nh0):
     Lx = len(x)
     Lh = len(h)
@@ -224,8 +206,8 @@ def convolution(x, nx0, h, nh0):
 
 def fourier_operation(action: str, **kwargs):
     actions = {
-        settings.fourier_operation[0]: fourier_magnitude_phase,
-        settings.fourier_operation[1]: fourier_filtering,
+        settings.fourierOptions[0]: fourier_magnitude_phase,
+        settings.fourierOptions[1]: fourier_filtering,
     }
     actions[action](**kwargs)
 
@@ -338,8 +320,8 @@ def fourier_filtering(x, fs1, h, fs2):
 
 def cosine_operation(action: str, **kwargs):
     actions = {
-        settings.cosine_operation[0]: cosine_magnitude_phase,
-        settings.cosine_operation[1]: cosine_filtering,
+        settings.cosineOptions[0]: cosine_magnitude_phase,
+        settings.cosineOptions[1]: cosine_filtering,
     }
     actions[action](**kwargs)
 
@@ -354,13 +336,13 @@ def cosine_magnitude_phase(x, fs1, h, fs2):
     
     plt.figure(figsize=(10, 4))
     plt.plot(freq_x, np.abs(dct_x))
-    plt.title("Magnitude T. Cosine x(n)")
+    plt.title("Magnitude T. Cosine y1")
     plt.xlabel("Freq (Hz)")
     plt.ylabel("Magnitude")
 
     plt.figure(figsize=(10, 4))
     plt.plot(freq_h, np.abs(dct_h))
-    plt.title("Magnitude T. Cosine h(n)")
+    plt.title("Magnitude T. Cosine y2")
     plt.xlabel("Freq (Hz)")
     plt.ylabel("Magnitude")
 
@@ -368,21 +350,24 @@ def cosine_magnitude_phase(x, fs1, h, fs2):
     plt.tight_layout()
     plt.show()
 
-def cosine_filtering(signal, fs, cutoff=1000):
-    dct_signal = dct(signal, norm='ortho')
+def cosine_filtering(x, fs1=None, h=None, fs2=None, cutoff=1000):
+    dct_signal = dct(x, norm='ortho')
 
+    # Si fs1 no está definido, asigna un valor por defecto
+    fs = fs1 if fs1 is not None else 1
     N = len(dct_signal)
     freqs = np.linspace(0, fs/2, N)
+
     filter_mask = freqs <= cutoff
     dct_filtered = dct_signal * filter_mask
 
     signal_filtered = idct(dct_filtered, norm='ortho')
 
-    t = np.arange(len(signal)) / fs
+    t = np.arange(len(x)) / fs
 
     plt.figure(figsize=(12, 6))
     plt.subplot(2, 1, 1)
-    plt.plot(t, signal, label='Original')
+    plt.plot(t, x, label='Original')
     plt.plot(t, signal_filtered, label='Filter', linestyle='--')
     plt.legend()
     plt.title("Señal original vs filtrada (dominio temporal)")
@@ -390,29 +375,38 @@ def cosine_filtering(signal, fs, cutoff=1000):
 
     plt.subplot(2, 1, 2)
     plt.plot(freqs, np.abs(dct_signal), label='DCT original')
-    plt.plot(freqs, np.abs(dct_filtered), label='DCT filtered', linestyle='--')
+    plt.plot(freqs, np.abs(dct_filtered), label='DCT filtrada', linestyle='--')
     plt.legend()
-    plt.title("DCT original vs filter")
+    plt.title("Espectro DCT original vs filtrado")
     plt.xlabel("Freq (Hz)")
     plt.tight_layout()
     plt.show()
 
-def wavelet_transform(x):
+def wavelet_transform(x, wavelet='db6', level=3):
     plt.close('all')
-    wavelet = 'db6'
-    level = 3
-    coeffs = pywt.wavedec(x, wavelet, level=level)
-    labels = ['A3', 'D3', 'D2', 'D1']
+
+    # Decomposición Wavelet
+    coeffs = pywt.wavedec(x, wavelet, level=3)
+
+    # Obtener vectores c y l (como en MATLAB)
+    c, l = pywt.coeffs_to_array(coeffs)
+
+    # Graficar los coeficientes por nivel
+    labels = [f'A{level}'] + [f'D{lvl}' for lvl in range(level, 0, -1)]
 
     plt.figure(figsize=(12, 8))
     for i, coef in enumerate(coeffs):
         plt.subplot(len(coeffs), 1, i + 1)
-        plt.plot(coef, color='teal')
-        plt.title(f'Wavelet Coefficients: {labels[i] if i < len(labels) else f"Detail {i}"}')
+        plt.plot(coef, color='royalblue')
+        plt.title(f"Coeficientes {labels[i]}")
         plt.grid(True)
+        plt.ylabel("Amplitud")
 
+    plt.xlabel("Muestras")
     plt.tight_layout()
     plt.show()
+
+    return c, l, coeffs
 
 def generate_result(n, y):
     root = tk.Tk()
